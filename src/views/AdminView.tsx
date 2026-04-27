@@ -71,8 +71,8 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
     fetchAllData();
   }, []);
 
-  const handleCreateOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateOrder = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setSubmitting(true);
     
     try {
@@ -84,13 +84,16 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
         customer_name: cashierData.customer_name,
         phone_number: cashierData.phone_number,
         laundry_type: selectedService?.name || 'Laundry',
-        weight: cashierData.weight,
+        weight: Number(cashierData.weight),
         status: 'washing' as OrderStatus,
         date_received: new Date(),
-        estimated_completion: new Date(Date.now() + 86400000), // 1 day default
+        estimated_completion: new Date(Date.now() + 86400000),
       };
 
-      await api.createOrder(newOrder);
+      console.log('Sending order:', newOrder);
+      const saved = await api.createOrder(newOrder);
+      console.log('Order saved:', saved);
+
       setLastCreatedReceipt(receipt);
       setCashierData({ 
         customer_name: '', 
@@ -98,9 +101,10 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
         service_id: 'wash_dry_iron', 
         weight: 1 
       });
-      fetchAllData();
-    } catch (err) {
+      await fetchAllData();
+    } catch (err: any) {
       console.error('Failed to create order:', err);
+      alert('Gagal membuat pesanan: ' + err.message);
     } finally {
       setSubmitting(false);
     }
