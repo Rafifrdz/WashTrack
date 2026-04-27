@@ -14,10 +14,33 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/washtr
 app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// MongoDB Connection with reuse check for Serverless (Vercel)
+let cachedConnection: any = null;
+
+async function connectDB() {
+  if (cachedConnection && mongoose.connection.readyState === 1) return cachedConnection;
+  
+  try {
+    console.log('Connecting to MongoDB Atlas...');
+    const conn = await mongoose.connect(MONGODB_URI);
+    cachedConnection = conn;
+    console.log('Connected to MongoDB Atlas');
+    return conn;
+  } catch (err) {
+    console.error('MongoDB connection error:', err);
+    throw err;
+  }
+}
+
+// Middleware to ensure DB connection
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    res.status(500).json({ error: 'Database connection failed' });
+  }
+});
 
 // Routes
 app.get('/api/orders', async (req, res) => {
@@ -71,7 +94,6 @@ app.get('/api/orders/receipt/:receiptNumber', async (req, res) => {
   }
 });
 
-// Inventory Routes
 app.get('/api/inventory', async (req, res) => {
   try {
     const items = await Inventory.find();
@@ -100,7 +122,6 @@ app.patch('/api/inventory/:id', async (req, res) => {
   }
 });
 
-// Customers Summary Route
 app.get('/api/customers', async (req, res) => {
   try {
     const customers = await Order.aggregate([
