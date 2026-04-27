@@ -1,0 +1,70 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    
+    // Check if user is in admins collection
+    function isAdmin() { 
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); 
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+
+    // --- Order Validation ---
+    function isValidOrder(data) {
+      return data.receipt_number is string && data.receipt_number.size() <= 64 &&
+             data.customer_name is string && data.customer_name.size() <= 128 &&
+             (data.phone_number == null || (data.phone_number is string && data.phone_number.size() <= 40)) &&
+             (data.laundry_details == null || (data.laundry_details is string && data.laundry_details.size() <= 500)) &&
+             data.status in ['washing', 'drying', 'ironing', 'completed'] &&
+             data.date_received is timestamp &&
+             data.estimated_completion is timestamp &&
+             data.created_at == request.time &&
+             data.updated_at == request.time;
+    }
+
+    // --- Rules for Orders ---
+    match /orders/{orderId} {
+      // Allow customers to track by receipt number
+      // We allow list only if querying for a specific receipt_number
+      allow list: if request.query.filters.size() > 0 && 
+                  request.query.filters.receipt_number is string;
+                  
+      allow get: if true;
+
+      // Admin operations
+      allow create: if isAdmin() && isValidOrder(incoming());
+      
+      allow update: if isAdmin() && (
+         // Just status update
+         (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updated_at']) && 
+          incoming().status in ['washing', 'drying', 'ironing', 'completed'] &&
+          incoming().updated_at == request.time) ||
+         // Full edit
+         (incoming().receipt_number == existing().receipt_number && 
+          incoming().created_at == existing().created_at &&
+          incoming().updated_at == request.time &&
+          isValidOrder(incoming()))
+      );
+      
+      allow delete: if isAdmin();
+    }
+
+    // --- Rules for Admins ---
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if false; 
+    }
+  }
+}

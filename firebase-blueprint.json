@@ -1,0 +1,72 @@
+{
+  "entities": {
+    "Order": {
+      "title": "Order",
+      "description": "Represents a laundry order.",
+      "type": "object",
+      "properties": {
+        "receipt_number": {
+          "type": "string",
+          "description": "Unique receipt number (e.g., LDRY-20231027-001)."
+        },
+        "customer_name": {
+          "type": "string",
+          "description": "Name of the customer."
+        },
+        "phone_number": {
+          "type": "string",
+          "description": "Phone number of the customer."
+        },
+        "laundry_details": {
+          "type": "string",
+          "description": "Type or weight of the laundry."
+        },
+        "date_received": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the order was received."
+        },
+        "estimated_completion": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Estimated completion date."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["washing", "drying", "ironing", "completed"],
+          "description": "Current status of the order."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["receipt_number", "customer_name", "date_received", "status"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Represents an administrator.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string"
+        }
+      },
+      "required": ["email"]
+    }
+  },
+  "firestore": {
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Collection of laundry orders."
+    },
+    "/admins/{adminId}": {
+      "schema": "Admin",
+      "description": "List of authorized admin UIDs."
+    }
+  }
+}
