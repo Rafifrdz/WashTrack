@@ -1,4 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// Use relative path to leverage Vite Proxy (dev) or Vercel Rewrites (prod)
+const API_BASE_URL = '/api';
 
 export const api = {
   async getOrders() {
