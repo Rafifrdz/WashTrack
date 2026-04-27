@@ -2,8 +2,8 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import Order from './models/Order';
-import Inventory from './models/Inventory';
+import Order from './models/Order.js';
+import Inventory from './models/Inventory.js';
 
 dotenv.config();
 
