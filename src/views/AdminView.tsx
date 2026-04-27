@@ -10,7 +10,7 @@ import {
   WashingMachine, User, Phone, ChevronDown, 
   Weight, Calendar, Info, Settings, Bell,
   Wind, Shirt, TrendingUp, Clock, CheckCircle2,
-  Package, AlertTriangle, ArrowRight, Menu, X, Calculator, CreditCard, Receipt
+  Package, AlertTriangle, ArrowRight, Menu, X, Calculator, CreditCard, Receipt, Printer, QrCode
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -33,7 +33,7 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
   const [inventory, setInventory] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeView, setActiveView] = useState('Overview');
+  const [activeView, setActiveView] = useState('Cashier');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Cashier State
@@ -46,7 +46,7 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
   
   const [search, setSearch] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [lastCreatedReceipt, setLastCreatedReceipt] = useState<string | null>(null);
+  const [lastOrder, setLastOrder] = useState<LaundryOrder | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const fetchAllData = async () => {
@@ -78,23 +78,22 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
     try {
       const receipt = generateReceiptNumber();
       const selectedService = SERVICES.find(s => s.id === cashierData.service_id);
-      
-      const newOrder = {
+      const now = new Date();
+      const completion = new Date(Date.now() + 86400000); // 1 day default
+
+      const newOrderData = {
         receipt_number: receipt,
         customer_name: cashierData.customer_name,
         phone_number: cashierData.phone_number,
         laundry_type: selectedService?.name || 'Laundry',
         weight: Number(cashierData.weight),
         status: 'washing' as OrderStatus,
-        date_received: new Date(),
-        estimated_completion: new Date(Date.now() + 86400000),
+        date_received: now,
+        estimated_completion: completion,
       };
 
-      console.log('Sending order:', newOrder);
-      const saved = await api.createOrder(newOrder);
-      console.log('Order saved:', saved);
-
-      setLastCreatedReceipt(receipt);
+      const savedOrder = await api.createOrder(newOrderData);
+      setLastOrder(savedOrder);
       setCashierData({ 
         customer_name: '', 
         phone_number: '', 
@@ -150,7 +149,7 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
     total: orders.length,
     active: orders.filter(o => o.status !== 'completed').length,
     completed: orders.filter(o => o.status === 'completed').length,
-    revenue: orders.length * 15000 // Mock revenue
+    revenue: orders.length * 15000 
   };
 
   const SidebarItem = ({ icon: Icon, label }: { icon: any, label: string }) => (
@@ -168,6 +167,10 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
 
   const selectedService = SERVICES.find(s => s.id === cashierData.service_id);
   const totalPrice = (selectedService?.price || 0) * cashierData.weight;
+  
+  // URL for QR Code (Points to Customer View with receipt param)
+  const currentDomain = window.location.origin;
+  const qrUrl = lastOrder ? `${currentDomain}/?receipt=${lastOrder.receipt_number}` : '';
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] flex flex-col md:flex-row overflow-hidden">
@@ -285,7 +288,7 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
 
               {/* Right: Summary */}
               <div className="space-y-6">
-                <div className="bg-gray-900 text-white p-8 rounded-3xl sticky top-24">
+                <div className="bg-gray-900 text-white p-8 rounded-3xl sticky top-24 border-4 border-gray-800">
                   <h3 className="text-xl font-black mb-8 flex items-center gap-3">
                     <Receipt className="w-6 h-6 text-blue-400" /> Ringkasan Order
                   </h3>
@@ -304,11 +307,11 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
                     <div className="space-y-4 pt-4 text-sm font-bold">
                        <div className="flex justify-between">
                           <span className="text-white/50">{selectedService?.name}</span>
-                          <span>Rp {(selectedService?.price || 0).toLocaleString()}</span>
+                          <span>Rp {((selectedService?.price || 0) * cashierData.weight).toLocaleString()}</span>
                        </div>
                        <div className="flex justify-between text-2xl pt-4 border-t border-white/10">
-                          <span className="font-black">TOTAL</span>
-                          <span className="font-black text-blue-400">Rp {totalPrice.toLocaleString()}</span>
+                          <span className="font-black text-xs uppercase tracking-widest text-white/40 self-end mb-1">Total</span>
+                          <span className="font-black text-blue-400 leading-none">Rp {totalPrice.toLocaleString()}</span>
                        </div>
                     </div>
 
@@ -325,7 +328,7 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
             </div>
           )}
 
-          {/* Overview View */}
+          {/* Other views... */}
           {activeView === 'Overview' && (
             <div className="space-y-8">
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -348,7 +351,6 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
             </div>
           )}
 
-          {/* Table for Order History */}
           {activeView === 'Order History' && (
             <div className="bg-white rounded-2xl border-2 border-gray-200 overflow-hidden">
                <div className="p-8 border-b-2 border-gray-100 flex justify-between items-center">
@@ -392,28 +394,119 @@ export function AdminView({ onLogout, onPageChange }: AdminViewProps) {
                </div>
             </div>
           )}
-
-          {/* Customers & Inventory updated similarly with rough style... */}
         </main>
       </div>
 
-      {/* Receipt Modal */}
+      {/* Formal Formal Receipt Modal */}
       <AnimatePresence>
-        {lastCreatedReceipt && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-sm rounded-3xl p-10 text-center border-4 border-gray-900">
-               <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-2xl mx-auto flex items-center justify-center mb-6"><Receipt className="w-10 h-10" /></div>
-               <h2 className="text-2xl font-black mb-2 tracking-tighter">ORDER BERHASIL!</h2>
-               <p className="text-gray-400 font-bold mb-8">Nota telah tersimpan ke sistem.</p>
-               
-               <div className="bg-gray-50 p-6 rounded-2xl text-left space-y-3 mb-8 border-2 border-gray-100">
-                  <div className="flex justify-between"><span className="text-xs font-bold text-gray-400 uppercase">Resi</span><span className="font-mono font-bold text-blue-600">{lastCreatedReceipt}</span></div>
-                  <div className="flex justify-between border-t border-gray-200 pt-3"><span className="text-xs font-bold text-gray-400 uppercase">Total</span><span className="font-black text-gray-900">Rp {totalPrice.toLocaleString()}</span></div>
+        {lastOrder && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md overflow-y-auto">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white w-full max-w-2xl rounded-sm p-0 text-gray-900 border-[3px] border-gray-900 shadow-2xl my-8">
+               {/* Print Header */}
+               <div className="p-8 border-b-2 border-gray-900 text-center relative">
+                  <button onClick={() => setLastOrder(null)} className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full print:hidden"><X className="w-6 h-6" /></button>
+                  <h1 className="text-4xl font-black tracking-[0.1em] uppercase mb-1">ALMIRA LAUNDRY</h1>
+                  <p className="text-lg font-bold italic mb-4">Laundry & Dry Cleaning Service</p>
+                  <div className="text-sm font-medium space-y-1">
+                    <p>Jl. Sunan Kali Jaga No.60F RT.001/011</p>
+                    <p>Telp : 0858 1403 1238</p>
+                    <p className="text-blue-700 font-bold underline">{currentDomain.replace(/^https?:\/\//, '')}</p>
+                  </div>
+                  <div className="mt-6 flex justify-end">
+                    <div className="border-2 border-gray-900 px-6 py-2 font-black text-xl">
+                      No. {lastOrder.receipt_number}
+                    </div>
+                  </div>
                </div>
 
-               <div className="grid grid-cols-2 gap-4">
-                 <button onClick={() => setLastCreatedReceipt(null)} className="py-4 bg-gray-100 rounded-xl font-bold hover:bg-gray-200 transition-all">Tutup</button>
-                 <button onClick={() => window.print()} className="py-4 bg-blue-600 text-white rounded-xl font-black hover:bg-blue-700 transition-all">Cetak Nota</button>
+               {/* Customer Info Section */}
+               <div className="grid grid-cols-1 md:grid-cols-2 border-b-2 border-gray-900">
+                  <div className="p-6 border-b-2 md:border-b-0 md:border-r-2 border-gray-900 space-y-2">
+                    <div className="flex gap-4"><span className="w-20 font-black uppercase text-xs">Agen :</span><span className="flex-1 border-b border-dotted border-gray-400">WashTrack Admin</span></div>
+                  </div>
+                  <div className="p-6 space-y-3">
+                    <div className="flex gap-4"><span className="w-20 font-black uppercase text-xs">Nama :</span><span className="flex-1 border-b border-dotted border-gray-400 font-bold">{lastOrder.customer_name}</span></div>
+                    <div className="flex gap-4"><span className="w-20 font-black uppercase text-xs">Telp :</span><span className="flex-1 border-b border-dotted border-gray-400">{lastOrder.phone_number || '-'}</span></div>
+                  </div>
+               </div>
+
+               {/* Dates Section */}
+               <div className="grid grid-cols-2 border-b-2 border-gray-900 text-sm font-black uppercase">
+                  <div className="p-4 border-r-2 border-gray-900 flex justify-between px-6">
+                    <span>Terima Tgl.</span>
+                    <span className="text-blue-700">{format(new Date(lastOrder.date_received), 'dd/MM/yyyy')}</span>
+                  </div>
+                  <div className="p-4 flex justify-between px-6 bg-gray-50">
+                    <span>Selesai Tgl.</span>
+                    <span className="text-blue-700">{format(new Date(lastOrder.estimated_completion), 'dd/MM/yyyy')}</span>
+                  </div>
+               </div>
+
+               {/* Table Section */}
+               <div className="p-0">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="bg-gray-100 border-b-2 border-gray-900 font-black uppercase text-[10px] tracking-widest">
+                        <th className="px-6 py-3 border-r-2 border-gray-900 text-left">Jasa / Layanan</th>
+                        <th className="px-6 py-3 border-r-2 border-gray-900 text-center">Harga (Kg)</th>
+                        <th className="px-6 py-3 border-r-2 border-gray-900 text-center">Berat (Kg)</th>
+                        <th className="px-6 py-3 text-right">Sub Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="font-bold">
+                      <tr className="border-b-2 border-gray-900 h-16">
+                        <td className="px-6 border-r-2 border-gray-900 uppercase">{lastOrder.laundry_type}</td>
+                        <td className="px-6 border-r-2 border-gray-900 text-center">Rp {((SERVICES.find(s => s.name === lastOrder.laundry_type)?.price || 0)).toLocaleString()}</td>
+                        <td className="px-6 border-r-2 border-gray-900 text-center">{lastOrder.weight}</td>
+                        <td className="px-6 text-right">Rp {((SERVICES.find(s => s.name === lastOrder.laundry_type)?.price || 0) * (lastOrder.weight || 1)).toLocaleString()}</td>
+                      </tr>
+                      {/* Empty rows to mimic formal look */}
+                      <tr className="border-b-2 border-gray-900 h-10"><td className="border-r-2 border-gray-900"></td><td className="border-r-2 border-gray-900"></td><td className="border-r-2 border-gray-900"></td><td></td></tr>
+                      <tr className="border-b-2 border-gray-900 h-10"><td className="border-r-2 border-gray-900"></td><td className="border-r-2 border-gray-900"></td><td className="border-r-2 border-gray-900"></td><td></td></tr>
+                      
+                      <tr className="bg-gray-100">
+                        <td colSpan={3} className="px-6 py-4 text-right border-r-2 border-gray-900 font-black uppercase">Total Harga</td>
+                        <td className="px-6 py-4 text-right font-black text-xl">Rp {((SERVICES.find(s => s.name === lastOrder.laundry_type)?.price || 0) * (lastOrder.weight || 1)).toLocaleString()}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+               </div>
+
+               {/* Footer Section with QR */}
+               <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-8 border-t-2 border-gray-900">
+                  <div className="md:col-span-2 text-[10px] space-y-2 uppercase font-bold text-gray-500">
+                    <p className="text-gray-900 font-black">PERHATIAN :</p>
+                    <p>1. Pengambilan barang harus disertai dengan bonnya dan dibayar tunai</p>
+                    <p>2. Bon ini berlaku 40 hari dari tanggal selesainya</p>
+                    <p>3. Kami tidak bertanggung jawab pada susut atau luntur karena sifat bahannya</p>
+                    <p>4. Jika terjadi kehilangan/kerusakan, kami hanya mengganti 10x ongkos cucinya</p>
+                    <p>5. Hak claim berlaku 12 jam setelah cucian diambil</p>
+                  </div>
+                  <div className="flex flex-col items-center justify-center gap-2">
+                     <div className="p-2 border-2 border-gray-900 rounded-lg">
+                        <img 
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrUrl)}`} 
+                          alt="QR Tracking" 
+                          className="w-24 h-24"
+                        />
+                     </div>
+                     <span className="text-[8px] font-black uppercase text-gray-400 tracking-tighter text-center">Scan untuk Cek Status<br/>Otomatis</span>
+                  </div>
+               </div>
+
+               <div className="p-8 pt-0 flex justify-between items-end">
+                  <div className="w-40 border-b-2 border-gray-900 text-center text-xs font-bold pb-1 text-gray-400">Tanda Terima</div>
+                  <div className="text-center">
+                    <p className="text-xs font-bold mb-12 uppercase">Hormat Kami,</p>
+                    <div className="w-40 border-b-2 border-gray-900 text-center text-xs font-bold pb-1">( ________________ )</div>
+                  </div>
+               </div>
+
+               <div className="p-6 bg-gray-900 text-white flex justify-between items-center print:hidden rounded-b-sm">
+                  <button onClick={() => setLastOrder(null)} className="px-6 py-2 font-bold hover:text-gray-300">Tutup</button>
+                  <button onClick={() => window.print()} className="bg-white text-gray-900 px-8 py-3 rounded-xl font-black flex items-center gap-3 hover:bg-gray-100 transition-all">
+                    <Printer className="w-5 h-5" /> Cetak Nota
+                  </button>
                </div>
             </motion.div>
           </div>

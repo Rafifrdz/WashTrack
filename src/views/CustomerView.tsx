@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { LaundryOrder, STATUS_FLOW, STATUS_LABELS } from '../types';
 import { Search, Loader2, WashingMachine, FileText, Headphones, Info, Check, Wind, Shirt, ShoppingBag, Calendar, ArrowRight } from 'lucide-react';
@@ -16,15 +16,12 @@ export function CustomerView({ onPageChange }: CustomerViewProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!receiptNumber.trim()) return;
-
+  const performSearch = async (code: string) => {
+    if (!code.trim()) return;
     setLoading(true);
     setError(null);
-    
     try {
-      const orderData = await api.getOrderByReceipt(receiptNumber.trim());
+      const orderData = await api.getOrderByReceipt(code.trim());
       if (orderData) {
         setOrder(orderData);
       } else {
@@ -37,6 +34,21 @@ export function CustomerView({ onPageChange }: CustomerViewProps) {
       setLoading(false);
     }
   };
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    performSearch(receiptNumber);
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const receiptFromUrl = params.get('receipt');
+    if (receiptFromUrl) {
+      const upperReceipt = receiptFromUrl.toUpperCase();
+      setReceiptNumber(upperReceipt);
+      performSearch(upperReceipt);
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#F1F5F9] font-sans text-gray-900 flex flex-col">
